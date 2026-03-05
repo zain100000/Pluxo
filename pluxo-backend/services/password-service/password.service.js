@@ -1,4 +1,3 @@
-
 /**
  * @fileoverview Password reset utilities (token generation + secure reset)
  * @module services/passwordService
@@ -74,7 +73,8 @@ const decrypt = (payload) => {
  */
 const generateResetToken = (payload, expiresIn = "1h") => {
   const token = jwt.sign(payload, SECRET, {
-    algorithm: "ES256",
+    algorithm: "HS256",
+    expiresIn,
   });
 
   const encrypted = encrypt(token);
@@ -94,7 +94,7 @@ const verifyResetToken = (token) => {
     );
 
     const decrypted = decrypt(encryptedPayload);
-    return jwt.verify(decrypted, SECRET, { algorithms: ["ES256"] });
+    return jwt.verify(decrypted, SECRET, { algorithms: ["HS256"] });
   } catch (err) {
     throw new Error("Invalid or expired reset token");
   }

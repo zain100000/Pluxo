@@ -1,4 +1,3 @@
-
 /**
  * @file Main Express application - Oloha Backend API
  * Production-ready with full security hardening
@@ -13,6 +12,7 @@ require("dotenv").config();
 const {
   securityMiddleware,
 } = require("./middlewares/security-middleware/security.middleware");
+const initCronJobs = require("./cron-jobs");
 
 const app = express();
 
@@ -60,12 +60,20 @@ app.get("/api/health", (req, res) => {
 // ==================================================
 const superAdminRoute = require("./routes/super-admin-route/super-admin.route");
 const userRoute = require("./routes/user-route/user.route");
+const sharedPasswordResetRoute = require("./routes/shared-route/shared-password.reset.route");
+const productRoute = require("./routes/product-route/product.route");
+const favoriteRoute = require("./routes/favorite-route/favorite.route");
+const cartRoute = require("./routes/cart-route/cart.route");
 
 // ==================================================
 // API Routes
 // ==================================================
 app.use("/api/super-admin", superAdminRoute);
 app.use("/api/user", userRoute);
+app.use("/api/auth", sharedPasswordResetRoute);
+app.use("/api/product", productRoute);
+app.use("/api/favorite", favoriteRoute);
+app.use("/api/cart", cartRoute);
 
 // ==================================================
 // MongoDB Connection + Server Start
@@ -79,6 +87,12 @@ mongoose
   })
   .then(() => {
     console.log("Connected to MongoDB Successfully");
+
+    // ==================================================
+    // Start Cron Jobs only AFTER DB connection is ready
+    // ==================================================
+    initCronJobs();
+
     app.listen(PORT, () => {
       console.log(`Pluxo Backend API Running Securely on PORT ${PORT}`);
     });

@@ -77,6 +77,8 @@ const getFolderForUploadType = (type) => {
   switch (type) {
     case "profilePicture":
       return `${base}/profilePictures`;    
+    case "productImage":
+      return `${base}/productImages`;    
     default:
       throw new Error(`Unsupported upload type: ${type}`);
   }
