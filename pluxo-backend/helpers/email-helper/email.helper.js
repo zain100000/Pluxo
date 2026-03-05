@@ -1,38 +1,44 @@
 /**
- * @fileoverview Email service utilities for Pluxo application
+ * @fileoverview Email service utilities for Pluxo application (Resend API)
  * @module services/emailService
- * @description Nodemailer-based email sender with branded HTML templates
+ * @description Resend-based email sender with branded HTML templates
  * Supports password resets, support tickets, and order notifications
  */
 
-const nodemailer = require("nodemailer");
+const assert = require("assert");
 
-// Validate required environment variables
-if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-  throw new Error(
-    "Missing required environment variables: EMAIL_USER and EMAIL_PASS",
-  );
+// Require RESEND_API_KEY
+if (!process.env.RESEND_API_KEY) {
+  throw new Error("Missing required environment variable: RESEND_API_KEY");
 }
 
 /**
- * Configured Nodemailer transporter (Gmail SMTP)
- * @type {import('nodemailer').Transporter}
+ * Try to load official Resend SDK; if not available, use fetch fallback.
+ * The SDK usage is preferable: `npm install resend`
  */
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  tls: {
-    rejectUnauthorized: true,
-  },
-});
+let resendClient = null;
+let useSdk = false;
+
+try {
+  // Official SDK exports Resend class
+  // If user installed `resend`, prefer this
+  // (Note: some setups use ESM-only packages; requiring may fail — that's okay)
+  const { Resend } = require("resend");
+  resendClient = new Resend(process.env.RESEND_API_KEY);
+  useSdk = true;
+} catch (err) {
+  // SDK not available — we'll use fetch to call the API directly
+  // Ensure global fetch exists (Node 18+). If not, the user must install node-fetch.
+  if (typeof fetch !== "function") {
+    // Friendly error explaining what to do
+    throw new Error(
+      "Resend SDK not installed and global fetch not available. Install the SDK with `npm install resend` or use Node >=18 (or install node-fetch).",
+    );
+  }
+}
 
 /**
- * Send plain email with HTML content
+ * Send plain email with HTML content via Resend
  * @async
  * @param {Object} options
  * @param {string} options.to      - Recipient email address
@@ -41,19 +47,68 @@ const transporter = nodemailer.createTransport({
  * @returns {Promise<boolean>} Success status
  */
 const sendEmail = async ({ to, subject, html }) => {
-  try {
-    const info = await transporter.sendMail({
-      from: "Pluxo <no-reply@pluxo.com>",
-      to: to.trim(),
-      subject,
-      html,
-      text: html.replace(/<[^>]+>/g, " ").substring(0, 200) + "...",
-    });
+  assert(typeof to === "string" && to.trim(), "Invalid `to`");
+  assert(typeof subject === "string", "Invalid `subject`");
+  assert(typeof html === "string", "Invalid `html`");
 
-    console.log(`Email sent to ${to} | MessageId: ${info.messageId}`);
-    return true;
+  const fromAddress = "Pluxo <onboarding@resend.dev>";
+  const plainText = html.replace(/<[^>]+>/g, " ").substring(0, 200) + "...";
+
+  try {
+    let res;
+    if (useSdk && resendClient) {
+      // Using the official SDK
+      res = await resendClient.emails.send({
+        from: fromAddress,
+        to: to.trim(),
+        subject,
+        html,
+        // `text` property is optional for Resend SDK; include plain text fallback
+        text: plainText,
+      });
+      // SDK typically returns an object with `id`
+      console.log(
+        `Email sent to ${to} | MessageId: ${res.id || "(no-id-returned)"}`,
+      );
+      return true;
+    } else {
+      // Fallback: call Resend REST API directly using fetch
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: fromAddress,
+          to: [to.trim()],
+          subject,
+          html,
+          text: plainText,
+        }),
+      });
+
+      if (!response.ok) {
+        const bodyText = await response.text().catch(() => "");
+        console.error(
+          `Failed to send email to ${to}: Resend API responded with ${response.status} ${response.statusText} - ${bodyText}`,
+        );
+        return false;
+      }
+
+      const body = await response.json().catch(() => ({}));
+      // Resend returns an `id` for the created message
+      console.log(
+        `Email sent to ${to} | MessageId: ${body.id || "(no-id-returned)"}`,
+      );
+      return true;
+    }
   } catch (error) {
-    console.error(`Failed to send email to ${to}:`, error.message);
+    // Log full error for easier debugging on hosted platforms
+    console.error(
+      `Failed to send email to ${to}:`,
+      error && error.message ? error.message : error,
+    );
     return false;
   }
 };
@@ -64,8 +119,10 @@ const sendEmail = async ({ to, subject, html }) => {
  * @param {string} [title="Pluxo Notification"] - Document title
  * @returns {string} Complete HTML email
  */
-const getEmailTemplate = (content, title = "Pluxo Notification") => `
-<!DOCTYPE html>
+const getEmailTemplate = (
+  content,
+  title = "Pluxo Notification",
+) => `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />

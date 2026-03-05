@@ -17,20 +17,20 @@ const compression = require("compression");
  */
 exports.securityMiddleware = (app) => {
   // Force HTTPS in production
-  if (process.env.NODE_ENV === "production") {
-    app.use((req, res, next) => {
-      if (
-        req.headers["x-forwarded-proto"] !== "https" &&
-        req.protocol !== "https"
-      ) {
-        return res.status(403).json({
-          success: false,
-          message: "HTTPS required in production",
-        });
-      }
-      next();
-    });
-  }
+  // if (process.env.NODE_ENV === "production") {
+  //   app.use((req, res, next) => {
+  //     if (
+  //       req.headers["x-forwarded-proto"] !== "https" &&
+  //       req.protocol !== "https"
+  //     ) {
+  //       return res.status(403).json({
+  //         success: false,
+  //         message: "HTTPS required in production",
+  //       });
+  //     }
+  //     next();
+  //   });
+  // }
 
   // Secure headers + CSP via Helmet
   app.use(
